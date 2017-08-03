@@ -2,6 +2,7 @@
   (:require [cheshire.core :as j]
             [greenyet.parse :as parse]
             [clj-http.client :as http]
+            [greenyet.config :as config]
             ))
 
 (defn- status-color-from-components [components]
@@ -58,7 +59,12 @@
              :conn-timeout timeout-in-ms
              :insecure? true
              :async? true
-             :throw-exceptions false}
+             :throw-exceptions false
+             :keystore config/key-store
+             :keystore-pass config/key-store-pass
+             :trust-store config/trust-store
+             :trust-store-pass config/trust-store-pass
+             }
               callback-response callback-error))
 
 (defn- identify-status [response timeout-in-ms config]

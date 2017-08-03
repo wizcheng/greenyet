@@ -5,6 +5,14 @@
 
 (def config-dir (System/getenv "CONFIG_DIR"))
 
+(def key-store (System/getenv "KEY_STORE"))
+
+(def key-store-pass (System/getenv "KEY_STORE_PASS"))
+
+(def trust-store (System/getenv "TRUST_STORE"))
+
+(def trust-store-pass (System/getenv "TRUST_STORE_PASS"))
+
 (def polling-interval-in-ms (or (some-> (System/getenv "POLLING_INTERVAL")
                                         Integer/parseInt)
                                 (some-> (System/getenv "TIMEOUT")
@@ -14,8 +22,12 @@
 (def ^:private config-params [["CONFIG_DIR" (or config-dir
                                                 "")]
                               ["POLLING_INTERVAL" polling-interval-in-ms]
-                              ["PORT" (or (System/getenv "PORT")
-                                          3000)]])
+                              ["PORT" (or (System/getenv "PORT") 3000)]
+                              ["KEY_STORE" key-store]
+                              ["KEY_STORE_PASS" key-store-pass]
+                              ["TRUST_STORE" trust-store]
+                              ["TRUST_STORE_PASS" trust-store-pass]
+                              ])
 
 (defn config-params-as-string []
   (->> config-params
