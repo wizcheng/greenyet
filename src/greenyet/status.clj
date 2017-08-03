@@ -1,7 +1,8 @@
 (ns greenyet.status
   (:require [cheshire.core :as j]
             [greenyet.parse :as parse]
-            [org.httpkit.client :as http]))
+            [clj-http.client :as http]
+            ))
 
 (defn- status-color-from-components [components]
   (let [colors (map :color components)
@@ -48,13 +49,17 @@
       (format "Status %s: %s" (:status response) body)
       (format "Status %s" (:status response)))))
 
-(defn- http-get [status-url timeout-in-ms callback]
+(defn- http-get [status-url timeout-in-ms callback-response callback-error]
   (http/get status-url
             {:headers {"Accept" "application/json"}
              :follow-redirects false
              :user-agent "greenyet"
-             :timeout timeout-in-ms}
-            callback))
+             :socket-timeout timeout-in-ms
+             :conn-timeout timeout-in-ms
+             :insecure? true
+             :async? true
+             :throw-exceptions false}
+              callback-response callback-error))
 
 (defn- identify-status [response timeout-in-ms config]
   (let [known-status-codes (set (or (:known-status-codes config)
@@ -63,11 +68,11 @@
       (cond
         (:error response) {:color :red
                            :message (format "greenyet: %s" (.getMessage (:error response)))}
-        (contains? known-status-codes (:status response)) (->> config
-                                                               (application-status (:body response))
-                                                               (http-status-code-trumps-app-status (:status response)))
+        (contains? known-status-codes (:status (:data response))) (->> config
+                                                               (application-status (:body (:data response)))
+                                                               (http-status-code-trumps-app-status (:status (:data response))))
         :else {:color :red
-               :message (message-for-http-response response)})
+               :message (message-for-http-response (:data response))})
       (catch Exception e
         {:color :red
          :message (.getMessage e)}))))
@@ -76,4 +81,7 @@
   (http-get status-url
             timeout-in-ms
             (fn [response]
-              (callback (identify-status response timeout-in-ms config)))))
+              (callback (identify-status {:data response} timeout-in-ms config)))
+            (fn [response]
+              (callback (identify-status {:error response, :data (:data response)} timeout-in-ms config)))
+            ))

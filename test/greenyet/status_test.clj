@@ -2,7 +2,7 @@
   (:require [cheshire.core :as j]
             [clojure.test :refer :all]
             [greenyet.status :as sut]
-            [org.httpkit.fake :as fake]))
+            [clj-http.fake :as fake]))
 
 (defn- host-without-color-config [url]
   {:hostname "the_host"
@@ -44,20 +44,28 @@
             :components component-config}})
 
 (defmacro with-fake-resource [url resp & body]
-  `(fake/with-fake-http [{:url ~url} ~resp]
+  `(fake/with-fake-routes {~url ~resp}
      ~@body))
 
+(defn- response-with-status [status body]
+  (fn [_] {:status status
+           :body body}))
+
 (defn- json-response [body]
-  {:status 200
-   :headers {"Content-Type" "application/json"}
-   :body (j/generate-string body)})
+  (fn [_] {:status 200
+          :headers {"Content-Type" "application/json"}
+          :body (j/generate-string body)}))
+
+(defn- json-response-with-status [status body]
+  (fn [_] {:status status
+           :headers {"Content-Type" "application/json"}
+           :body (j/generate-string body)}))
 
 (def timeout 42)
 
 (deftest test-with-status
   (testing "should return red for 500"
-    (with-fake-resource "http://the_host/not_found" {:status 500
-                                                     :body ""}
+    (with-fake-resource "http://the_host/not_found" (response-with-status 500 "")
       (with-local-vars [status nil]
         (sut/fetch-status (host-without-color-config "http://the_host/not_found")
                           timeout
@@ -66,8 +74,7 @@
                                    (:color status))))))))
 
   (testing "should return green for 200"
-    (with-fake-resource "http://the_host/found" {:status 200
-                                                 :body ""}
+    (with-fake-resource "http://the_host/found" (response-with-status 200 "")
       (sut/fetch-status (host-without-color-config "http://the_host/found")
                         timeout
                         (fn [status]
@@ -99,8 +106,7 @@
                                  (:color status)))))))
 
   (testing "should fail if status key is configured but no JSON is provided"
-    (with-fake-resource "http://the_host/status.json" {:status 200
-                                                       :body "some body"}
+    (with-fake-resource "http://the_host/status.json" (response-with-status 200 "some body")
       (sut/fetch-status (host-with-color-config "http://the_host/status.json" "status")
                         timeout
                         (fn [status]
@@ -143,8 +149,7 @@
 
   (testing "messages"
     (testing "simple 200 check"
-      (with-fake-resource "http://the_host/found" {:status 200
-                                                   :body ""}
+      (with-fake-resource "http://the_host/found" (response-with-status 200 "")
         (sut/fetch-status (host-without-color-config "http://the_host/found")
                           timeout
                           (fn [status]
@@ -152,8 +157,7 @@
                                    (:message status)))))))
 
     (testing "for 500"
-      (with-fake-resource "http://the_host/error"  {:status 500
-                                                    :body "Internal Error"}
+      (with-fake-resource "http://the_host/error"  (response-with-status 500 "Internal Error")
         (sut/fetch-status (host-without-color-config "http://the_host/error")
                           timeout
                           (fn [status]
@@ -161,8 +165,7 @@
                                    (:message status)))))))
 
     (testing "for 302"
-      (with-fake-resource "http://the_host/redirect"  {:status 302
-                                                       :body "Found"}
+      (with-fake-resource "http://the_host/redirect"  (response-with-status 302 "Found")
         (sut/fetch-status (host-without-color-config "http://the_host/redirect")
                           timeout
                           (fn [status]
@@ -170,8 +173,7 @@
                                    (:message status)))))))
 
     (testing "for internal exception"
-      (with-fake-resource "http://the_host/status.json"  {:status 200
-                                                          :body "some body"}
+      (with-fake-resource "http://the_host/status.json"  (response-with-status 200 "some body")
         (sut/fetch-status (host-with-color-config "http://the_host/status.json" "status")
                           timeout
                           (fn [status]
@@ -198,9 +200,9 @@
                                    (first (:message status))))))))
 
     (testing "should indicate JSON parse error"
-      (with-fake-resource "http://the_host/status.json" {:status 200
-                                                         :headers {"Content-Type" "application/json"}
-                                                         :body "not_json"}
+      (with-fake-resource "http://the_host/status.json" (fn [_] {:status 200
+                                                                 :headers {"Content-Type" "application/json"}
+                                                                 :body "not_json"})
         (sut/fetch-status (host-with-color-config "http://the_host/status.json" "color")
                           timeout
                           (fn [status]
@@ -397,10 +399,8 @@
 
   (testing "custom accepted HTTP return codes"
     (testing "for 503"
-      (with-fake-resource "http://the_host/status503" {:status 503
-                                                       :headers {"Content-Type" "application/json"}
-                                                       :body (j/generate-string {:color "green"
-                                                                                 :components [{:color "green"}]})}
+      (with-fake-resource "http://the_host/status503" (json-response-with-status 503 {:color "green"
+                                                                                      :components [{:color "green"}]})
         (sut/fetch-status {:hostname "the_host"
                            :service "the_service"
                            :status-url "http://the_host/status503"
@@ -414,9 +414,7 @@
                             (is (= [{:color :green :name "components 0" :message nil}]
                                    (:components status)))))))
     (testing "for 300"
-      (with-fake-resource "http://the_host/status300" {:status 300
-                                                       :headers {"Content-Type" "application/json"}
-                                                       :body (j/generate-string {:color "green"})}
+      (with-fake-resource "http://the_host/status300" (json-response-with-status 300 {:color "green"})
         (sut/fetch-status {:hostname "the_host"
                            :service "the_service"
                            :status-url "http://the_host/status300"
